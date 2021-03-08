@@ -3,3 +3,76 @@ title: "sqlite"
 output: html_notebook
 ---
 
+```{r}
+library(tidyverse)
+library(yaml)
+library(DBI)
+library(sf)
+library(dbplyr)
+library(ggthemes)
+library(cowplot)
+
+```
+
+For this one we'll use some data I've scraped about the Radio Show 'All Things Considered.' I want to see if they've really considered all the things. So I've been using selenium to systematically scrape their search page for all of the entries in the simple English Wikipedia. Some of the results are in this database, which I've shared with you:
+
+```{r}
+# we use db connect to connect to the local sqlite db
+conn <- dbConnect(RSQLite::SQLite(), 'data/atc.db')
+```
+
+Just like the craigslist data, we can make this into a tbl object.
+
+```{r}
+# we can us dplyr's 'tbl' function to load a foregin table as a local dplyr object
+atc_data <- tbl(conn, "atc_data")
+# it looks just like a tibble, but actually it's just lazy-loading my data
+atc_data
+```
+
+We can see that I've only processed around a third of the terms.
+SQLite is a lot slower than psql. Still: you don't have to do this in memory.
+```{r}
+atc_data %>% count(is.na(date))
+```
+
+Let's take just the rows that I have processed and see how they look over time, which means making a year variable. Then we can see how many did we observe in eahc year and what was the average count in those years
+
+```{r}
+atc_data %>% 
+  filter(!is.na(date)) %>% 
+  mutate(date = Date(date), year = year(date)) %>%
+  group_by(year) %>%
+  summarize(n = n(), avg_count = mean(count))
+```
+
+Sometimes we want to further analyze the results of our query in R. Then we can load our query into memory with the `collect()` function.
+```{r}
+plot_df <- atc_data %>% 
+  filter(!is.na(date)) %>% 
+  mutate(date = Date(date), year = year(date)) %>%
+  group_by(year) %>%
+  summarize(n = n(), avg_count = mean(count)) %>% collect()
+plot_df
+```
+
+```{r}
+coeff =.02
+plot_df %>% drop_na() %>%
+  ggplot(aes(x=year)) +
+  
+  geom_line(aes(y=n), color = 'purple') + 
+  geom_line(aes(y=avg_count/coeff), color = 'dark green', linetype = 2) + # Divide by coef to get roughly same range
+  
+  scale_y_continuous(
+    
+    # Features of the first axis
+    name = "Count of Matched Topics (Purple)",
+    
+    # Add a second axis and specify its features
+    sec.axis = sec_axis(~.*coeff, name="Average Number of Matches (Green)")
+  )+
+  theme_classic()
+```
+
+
