@@ -19,6 +19,8 @@ For this one we'll use some data I've scraped about the Radio Show 'All Things C
 ```{r}
 # we use db connect to connect to the local sqlite db
 conn <- dbConnect(RSQLite::SQLite(), 'data/atc.db')
+# then we can see the available tables
+dbListTables(conn)
 ```
 
 Just like the craigslist data, we can make this into a tbl object.
@@ -75,4 +77,53 @@ plot_df %>% drop_na() %>%
   theme_classic()
 ```
 
+There are two things we haven't actually looked through here: writing data to the DB, and actual SQL code. I find that tidyverse is awesome if you're working with one table, but I often switch to sql if I'm doing complex joins.
+
+Let's use the built-in presidential data, add it to our database, and then write some raw sql.
+
+```{r}
+#should be built in
+glimpse(presidential)
+```
+We can copy that data up into our local sqlite table:
+```{r}
+copy_to(conn, presidential, name = 'presidential')
+dbListTables(conn)
+```
+
+Now we can do some joins, but first a little basic sql.
+We can query certian rows usinga 'select' statment
+
+```{r}
+query <- "SELECT start, end FROM presidential"
+dbGetQuery(conn, query)
+```
+
+looks like those are in days since 1970
+
+We can use '*' to select all columns and 'limit' to restrict our query to the first N rows:
+
+
+```{r}
+query <- "SELECT * FROM atc_data LIMIT 10"
+dbGetQuery(conn, query)
+```
+
+
+
+Then, we can rewrite the groupby that we did above using actual sql.
+```{r}
+query <- "SELECT strftime('%Y',date) year, count(*) n, avg(count) avg_count FROM atc_data GROUP BY year"
+dbGetQuery(conn, query)
+```
+
+
+When we do that, we've actually changed the data written to disc in  `data/atc.db`. And now we can do SQL joins. One of the particularly shiny aspects of sql vs tidyverse is the joins: tidyverse joins are based on matching in columns. Most of the time, SQL joins will be the same, but they can actually evaluate to any logical statement.This query joins based on presidental term, then groups by president name to count the number of things considered by *All Things Considered* in each recent presidential term.
+
+```{r}
+query <- "SELECT count(*), name FROM atc_data JOIN presidential ON presidential.start < (strftime('%s',atc_data.date)/86400) AND presidential.end > (strftime('%s',atc_data.date)/86400) GROUP BY name"
+
+dbGetQuery(conn, query)
+
+```
 
