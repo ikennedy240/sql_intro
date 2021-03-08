@@ -1,0 +1,67 @@
+---
+title: "doyenne"
+output: html_notebook
+---
+
+```{r}
+library(tidyverse)
+library(yaml)
+library(DBI)
+library(sf)
+library(dbplyr)
+library(ggthemes)
+library(cowplot)
+
+#I store credentials at base dir of UDrive (H:/) as YAML
+doyenne_cred <- read_yaml("H:/doyenne.yaml")
+```
+
+
+```{r}
+# we use db connect to connect to the remote psql sever
+ikennedy <- dbConnect(
+  # this is the driver, it'll change if you're using a different sql version
+  drv = RPostgres::Postgres(),
+  # this comes from my cred file: it's the name of the database
+  dbname = names(doyenne_cred),
+  # this is the host of the psql server, I could put it in my cred
+  host = "doyenne.csde.washington.edu",
+  # this is 'ikennedy', my username
+  user = names(doyenne_cred),
+  # this is my password, not on version control obvs
+  password = doyenne_cred[[names(doyenne_cred)]]
+)
+```
+
+
+```{r}
+# we can us dplyr's 'tbl' function to load a foregin table as a local dplyr object
+cl_diss_data <- tbl(ikennedy, "cl_diss_data")
+# it looks just like a tibble, but actually it's just lazy-loading my data
+cl_diss_data
+```
+Functions like `glimpse` still work to look at the data structure
+
+```{r}
+cl_diss_data %>% glimpse()
+```
+
+We can do summaries and make plots and stuff using our new table object.
+
+```{r}
+# summary of 1.5 million rows
+cl_diss_data %>% group_by(cbsa) %>% summarize(n = n(), median_rent = median(rent_mid))
+```
+
+We can even port that into a visualization:
+
+```{r}
+cl_diss_data %>% 
+  filter(beds<=4) %>%
+  group_by(cbsa, beds) %>% 
+  summarize(median_rent = median(rent_mid)) %>%
+  ggplot(aes(beds, median_rent, fill = cbsa))+
+  geom_col()+
+  facet_wrap(~cbsa)
+```
+
